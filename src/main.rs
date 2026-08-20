@@ -676,7 +676,7 @@ async fn handle_signals(mut signals: Signals, shard: Arc<ShardManager>, data: Ar
 async fn main() {
     env_logger::init();
 
-    let yasl_test = std::env::var("YASLTEST").unwrap();
+    let yasl_test = std::env::var("YASLTEST").unwrap_or("0".to_string());
 
     let config = if yasl_test == "1" {
         Figment::new()
@@ -684,7 +684,8 @@ async fn main() {
             .extract::<Config>()
             .expect("Failed to load config file")
     } else {
-        let configuration_directory = std::env::var("CONFIGURATION_DIRECTORY").unwrap();
+        let configuration_directory =
+            std::env::var("CONFIGURATION_DIRECTORY").unwrap_or("/etc".to_string());
 
         Figment::new()
             .merge(Toml::file(format!("{configuration_directory}/yasl.toml")))
@@ -695,9 +696,10 @@ async fn main() {
     let db_path = if yasl_test == "1" {
         "yasl.sql".to_string()
     } else {
-        let state_directory = std::env::var("STATE_DIRECTORY").unwrap();
+        let state_directory =
+            std::env::var("STATE_DIRECTORY").unwrap_or("/var/lib/yasl".to_string());
 
-        format!("{state_directory}/yasl/yasl.sql")
+        format!("{state_directory}/yasl.sql")
     };
 
     let db = Database {
