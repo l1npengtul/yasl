@@ -5,3 +5,5 @@
 yasl.sql
 yasl.sql-shm
 yasl.sql-wal
+
+yasl.toml

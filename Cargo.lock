@@ -870,6 +870,7 @@ checksum = "9a31d2a3fbaaeb2af2368bbdd904aa8e812d3c04a1ee10d3171f52d556e5d0a3"
 dependencies = [
  "futures-channel",
  "futures-core",
+ "futures-executor",
  "futures-io",
  "futures-sink",
  "futures-task",
@@ -2733,6 +2734,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e513e435a8898a0002270f29d0a708b7879708fb5c4d00e46983ca2d2d378cf0"
 dependencies = [
+ "futures-core",
  "libc",
  "signal-hook",
  "tokio",
@@ -4162,12 +4164,14 @@ dependencies = [
  "discord-webhook-lib",
  "env_logger",
  "figment2",
+ "futures",
  "log",
  "ohno",
  "poise",
  "quick_cache",
  "serde",
  "serenity 0.12.5 (git+https://github.com/serenity-rs/serenity?branch=next)",
+ "signal-hook",
  "signal-hook-tokio",
  "sqlx",
  "tabular",

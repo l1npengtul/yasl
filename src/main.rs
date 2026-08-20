@@ -4,17 +4,19 @@ use figment2::{
     Figment,
     providers::{Env, Format, Toml},
 };
-use log::info;
+use futures::stream::StreamExt;
+use log::{info, warn};
 use ohno::AppError;
 use poise::{
     Framework, FrameworkContext, FrameworkOptions,
     serenity_prelude::{
         CacheHttp, ClientBuilder, Context as SerenityContext, FullEvent, GatewayIntents, GuildId,
-        OnlineStatus, PrimaryGuild, RoleId, User, UserId,
+        OnlineStatus, PrimaryGuild, RoleId, ShardManager, User, UserId,
     },
 };
 use serde::{Deserialize, Serialize};
-// use signal_hook_tokio::Signals;
+use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
+use signal_hook_tokio::Signals;
 use sqlx::SqlitePool;
 use sqlx::query;
 use std::sync::Arc;
@@ -28,8 +30,8 @@ mod built_info {
 struct Config {
     discord_token: String,
     log_channel_webhook: String,
-    manager_roles: Vec<u64>,
-    notify_roles: Vec<u64>,
+    //manager_roles: Vec<u64>,
+    //notify_roles: Vec<u64>,
     main_server: u64,
     qurantine_add_role: Option<u64>,
     qurantine_prevent_role: Option<u64>,
@@ -41,7 +43,7 @@ struct Database {
 }
 
 impl Database {
-    pub async fn count_records(&self) -> Result<(i64, i64, i64), AppError> {
+    pub async fn count_records(&self) -> Result<(i64, i64, i64, i64), AppError> {
         let banned_tags = query!("SELECT COUNT(*) as count FROM banned_tags")
             .map(|rec| rec.count)
             .fetch_one(&self.db)
@@ -50,11 +52,15 @@ impl Database {
             .map(|rec| rec.count)
             .fetch_one(&self.db)
             .await?;
+        let banned_users = query!("SELECT COUNT(*) as count FROM banned_users")
+            .map(|rec| rec.count)
+            .fetch_one(&self.db)
+            .await?;
         let actions = query!("SELECT COUNT(*) as count FROM actions")
             .map(|rec| rec.count)
             .fetch_one(&self.db)
             .await?;
-        Ok((banned_tags, exempted_users, actions))
+        Ok((banned_tags, exempted_users, banned_users, actions))
     }
 
     pub async fn get_all_exempt_users(&self) -> Result<Vec<(UserId, DateTime<Utc>)>, AppError> {
@@ -186,6 +192,39 @@ impl Database {
         .await?;
         Ok(())
     }
+
+    pub async fn is_user_banned(&self, user: UserId) -> Result<bool, AppError> {
+        let user_id = user.get() as i64;
+        let exists = query!(
+            "SELECT * FROM banned_users WHERE user_id = $1 LIMIT 1",
+            user_id
+        )
+        .fetch_optional(&self.db)
+        .await?
+        .is_some();
+        Ok(exists)
+    }
+
+    pub async fn ban_user(&self, user: UserId) -> Result<(), AppError> {
+        let user_id = user.get() as i64;
+        let _ = query!("INSERT INTO banned_users VALUES ($1)", user_id)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn unban_user(&self, user: UserId) -> Result<(), AppError> {
+        let user_id = user.get() as i64;
+        let _ = query!("DELETE FROM banned_users WHERE user_id = $1", user_id)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn stop(&self) -> Result<(), AppError> {
+        self.db.close().await;
+        Ok(())
+    }
 }
 
 struct Data {
@@ -201,6 +240,24 @@ async fn event_handler(
 ) -> Result<(), AppError> {
     match event {
         FullEvent::GuildMemberAddition { new_member } => {
+            if framework
+                .user_data()
+                .await
+                .db
+                .is_user_banned(new_member.user.id)
+                .await?
+            {
+                qurantine_user(
+                    &framework.serenity_context,
+                    framework.user_data.clone(),
+                    new_member.guild_id,
+                    new_member.user.id,
+                    &new_member.roles,
+                    true,
+                )
+                .await?;
+                return Ok(());
+            }
             if let Some(primary) = &new_member.user.primary_guild {
                 if check_user_tag(framework.user_data.clone(), primary).await? {
                     qurantine_user(
@@ -209,6 +266,7 @@ async fn event_handler(
                         new_member.guild_id,
                         new_member.user.id,
                         &new_member.roles,
+                        true,
                     )
                     .await?;
                 }
@@ -219,14 +277,29 @@ async fn event_handler(
             new: _,
             event,
         } => {
+            if framework.user_data.db.is_user_banned(event.user.id).await? {
+                qurantine_user(
+                    &framework.serenity_context,
+                    framework.user_data.clone(),
+                    event.guild_id,
+                    event.user.id,
+                    &event.roles,
+                    false,
+                )
+                .await?;
+                return Ok(());
+            }
+
             if let Some(primary) = &event.user.primary_guild {
                 if check_user_tag(framework.user_data.clone(), primary).await? {
+                    warn!("matches!");
                     qurantine_user(
                         &framework.serenity_context,
                         framework.user_data.clone(),
                         event.guild_id,
                         event.user.id,
                         &event.roles,
+                        true,
                     )
                     .await?;
                 }
@@ -236,21 +309,36 @@ async fn event_handler(
             log_wh(framework.user_data.clone(), "Ready".to_string()).await?;
         }
         FullEvent::UserUpdate { old_data, new } => {
+            let guild_id = GuildId::new(framework.user_data.config.main_server);
+            let roles = framework
+                .serenity_context
+                .http()
+                .get_member(guild_id, new.id)
+                .await?;
+
+            if framework.user_data.db.is_user_banned(new.id).await? {
+                qurantine_user(
+                    &framework.serenity_context,
+                    framework.user_data.clone(),
+                    guild_id,
+                    new.id,
+                    &roles.roles,
+                    false,
+                )
+                .await?;
+                return Ok(());
+            }
+
             if let Some(old) = old_data {
                 if let Some(old_primary) = &old.primary_guild {
                     if check_user_tag(framework.user_data.clone(), old_primary).await? {
-                        let guild_id = GuildId::new(framework.user_data.config.main_server);
-                        let roles = framework
-                            .serenity_context
-                            .http()
-                            .get_member(guild_id, old.id)
-                            .await?;
                         qurantine_user(
                             &framework.serenity_context,
                             framework.user_data.clone(),
                             guild_id,
                             old.id,
                             &roles.roles,
+                            true,
                         )
                         .await?;
                         return Ok(());
@@ -259,18 +347,13 @@ async fn event_handler(
             }
             if let Some(primary) = &new.primary_guild {
                 if check_user_tag(framework.user_data.clone(), primary).await? {
-                    let guild_id = GuildId::new(framework.user_data.config.main_server);
-                    let roles = framework
-                        .serenity_context
-                        .http()
-                        .get_member(guild_id, new.id)
-                        .await?;
                     qurantine_user(
                         &framework.serenity_context,
                         framework.user_data.clone(),
                         guild_id,
                         new.id,
                         &roles.roles,
+                        true,
                     )
                     .await?;
                 }
@@ -309,8 +392,22 @@ async fn qurantine_user(
     server_id: GuildId,
     user_id: UserId,
     roles: &[RoleId],
+    add_to_ban: bool,
 ) -> Result<(), AppError> {
     let mut action_done = false;
+    if data.db.is_user_exempted(user_id).await? {
+        log_wh(
+            data,
+            format!(
+                "Action: User Exempted on <@{}> ({})",
+                user_id.get(),
+                user_id.get()
+            ),
+        )
+        .await?;
+        return Ok(());
+    }
+
     if let Some(add_role_id) = data.config.qurantine_add_role {
         let role_id = RoleId::new(add_role_id);
         if !roles.contains(&role_id) {
@@ -345,7 +442,7 @@ async fn qurantine_user(
     if action_done {
         data.db.insert_action("qurantine", user_id).await?;
         log_wh(
-            data,
+            data.clone(),
             format!(
                 "Action: Qurantine on <@{}> ({})",
                 user_id.get(),
@@ -355,12 +452,17 @@ async fn qurantine_user(
         .await?;
     }
 
+    if add_to_ban && !data.db.is_user_banned(user_id).await? {
+        data.db.ban_user(user_id).await?;
+    }
+
     Ok(())
 }
 
 #[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
 async fn status(context: Ctx<'_>) -> Result<(), AppError> {
-    let (tags_count, users_count, actions_count) = context.data().db.count_records().await?;
+    let (tags_count, users_count, bans_count, actions_count) =
+        context.data().db.count_records().await?;
     let ping = context.ping().await.as_millis();
 
     let version = built_info::PKG_VERSION;
@@ -376,6 +478,7 @@ Created on @spunksuii's request for anti-goon squads.
 
 ++ -- STATS --
 ++ Banned Tags:    {tags_count}
+++ Banned Users:   {bans_count}
 ++ Exempted Users: {users_count}
 ++ Actions Taken:  {actions_count}
 ++ -----------
@@ -392,6 +495,9 @@ Created on @spunksuii's request for anti-goon squads.
 #[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
 async fn exempt_user(context: Ctx<'_>, user: User) -> Result<(), AppError> {
     context.data().db.insert_exempt_user(user.id).await?;
+    if context.data().db.is_user_banned(user.id).await? {
+        context.data().db.unban_user(user.id).await?;
+    }
     context
         .reply(format!(
             "Sucessfully exempted user {} ({}).",
@@ -523,6 +629,27 @@ async fn register_commands(ctx: Ctx<'_>) -> Result<(), AppError> {
     ctx.say("Successfully registered slash commands!").await?;
     Ok(())
 }
+
+#[poise::command(prefix_command, owners_only)]
+async fn stop(ctx: Ctx<'_>) -> Result<(), AppError> {
+    log_wh(ctx.data().clone(), "Stopping...".to_string()).await?;
+    ctx.serenity_context().shard.shutdown_clean();
+    ctx.data().db.stop().await?;
+    Ok(())
+}
+
+async fn handle_signals(mut signals: Signals, shard: Arc<ShardManager>, data: Arc<Data>) {
+    while let Some(signal) = signals.next().await {
+        match signal {
+            SIGTERM | SIGINT | SIGQUIT => {
+                shard.shutdown_all().await;
+                data.db.stop().await.unwrap();
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -560,6 +687,9 @@ async fn main() {
     let data = Arc::new(Data { config, db });
     let data2 = data.clone();
 
+    let signals = Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("failed to hook signals");
+    let handle = signals.handle();
+
     let poise = Framework::builder()
         .options(FrameworkOptions {
             commands: vec![
@@ -573,15 +703,11 @@ async fn main() {
                 banned_tags(),
                 unban_tag(),
                 register_commands(),
+                stop(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("~".into()),
-                non_command_message: Some(|_, msg| {
-                    Box::pin(async move {
-                        println!("non command message!: {}", msg.content);
-                        Ok(())
-                    })
-                }),
+                non_command_message: Some(|_, _msg| Box::pin(async move { Ok(()) })),
                 ..Default::default()
             },
             on_error: |err| Box::pin(async move { poise::builtins::on_error(err).await.unwrap() }),
@@ -608,5 +734,8 @@ async fn main() {
     .await
     .expect("failed to log into discord");
 
+    let shard_man = client.shard_manager.clone();
+    tokio::spawn(handle_signals(signals, shard_man, data2));
     client.start().await.unwrap();
+    handle.close();
 }

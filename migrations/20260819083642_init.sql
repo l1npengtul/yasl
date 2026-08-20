@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS exempted_users(
 
 CREATE INDEX idx_exempted_users_user_id ON exempted_users(user_id);
 
+CREATE TABLE IF NOT EXISTS banned_users(user_id INTEGER NOT NULL UNIQUE) STRICT;
+
+CREATE INDEX idx_banned_users_on_user_id ON banned_users(user_id);
+
 CREATE TABLE IF NOT EXISTS actions(
     action_done TEXT NOT NULL,
     user_id INTEGER NOT NULL,
