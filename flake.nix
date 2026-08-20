@@ -111,60 +111,65 @@
               group = "yasl";
             };
             users.groups.yasl = { };
-            systemd.services.yasl = {
-              wantedBy = [ "default.target" ];
-              after = [ "network.target" ];
-              description = "yasl discord bot";
-              serviceConfig = {
-                User = "yasl";
-                Group = "yasl";
-                StateDirectory = "yasl";
-                Restart = "on-failure";
-                RestartSec = 10;
-                ExecStart = "${self.packages.default}/bin/yasl";
+            systemd.services.yasl =
+              let
+                sys = pkgs.stdenv.hostPlatform.system;
+                yaslpkg = self.packages.${sys}.default;
+              in
+              {
+                wantedBy = [ "default.target" ];
+                after = [ "network.target" ];
+                description = "yasl discord bot";
+                serviceConfig = {
+                  User = "yasl";
+                  Group = "yasl";
+                  StateDirectory = "yasl";
+                  Restart = "on-failure";
+                  RestartSec = 10;
+                  ExecStart = "${yaslpkg}/bin/yasl";
 
-                CapabilityBoundingSet = [ "" ];
-                DeviceAllow = "";
-                DevicePolicy = "closed";
-                LockPersonality = true;
-                MemoryDenyWriteExecute = true;
-                NoNewPrivileges = true;
-                PrivateDevices = true;
-                PrivateTmp = true;
-                PrivateUsers = true;
-                ProcSubset = "pid";
-                ProtectClock = true;
-                ProtectControlGroups = true;
-                ProtectHome = true;
-                ProtectHostname = true;
-                ProtectKernelLogs = true;
-                ProtectKernelModules = true;
-                ProtectKernelTunables = true;
-                ProtectProc = "invisible";
-                ProtectSystem = "strict";
-                ReadWritePaths = [ "/var/lib/yasl" ];
-                RemoveIPC = true;
-                RestrictAddressFamilies = [
-                  "AF_INET"
-                  "AF_INET6"
-                  "AF_UNIX"
-                ];
-                RestrictNamespaces = true;
-                RestrictRealtime = true;
-                RestrictSUIDSGID = true;
-                SystemCallArchitectures = "native";
-                SystemCallFilter = [
-                  "@system-service"
-                  "~@resources"
-                  "~@privileged"
-                ];
-                UMask = "0077";
-              };
+                  CapabilityBoundingSet = [ "" ];
+                  DeviceAllow = "";
+                  DevicePolicy = "closed";
+                  LockPersonality = true;
+                  MemoryDenyWriteExecute = true;
+                  NoNewPrivileges = true;
+                  PrivateDevices = true;
+                  PrivateTmp = true;
+                  PrivateUsers = true;
+                  ProcSubset = "pid";
+                  ProtectClock = true;
+                  ProtectControlGroups = true;
+                  ProtectHome = true;
+                  ProtectHostname = true;
+                  ProtectKernelLogs = true;
+                  ProtectKernelModules = true;
+                  ProtectKernelTunables = true;
+                  ProtectProc = "invisible";
+                  ProtectSystem = "strict";
+                  ReadWritePaths = [ "/var/lib/yasl" ];
+                  RemoveIPC = true;
+                  RestrictAddressFamilies = [
+                    "AF_INET"
+                    "AF_INET6"
+                    "AF_UNIX"
+                  ];
+                  RestrictNamespaces = true;
+                  RestrictRealtime = true;
+                  RestrictSUIDSGID = true;
+                  SystemCallArchitectures = "native";
+                  SystemCallFilter = [
+                    "@system-service"
+                    "~@resources"
+                    "~@privileged"
+                  ];
+                  UMask = "0077";
+                };
 
-              environment = {
-                RUST_LOG = "yasl";
+                environment = {
+                  RUST_LOG = "yasl";
+                };
               };
-            };
 
             environment.etc."yasl.toml".source = cfg.configFile;
           };
