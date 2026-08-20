@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use discord_webhook_lib::DiscordMessage;
 use figment2::{
     Figment,
-    providers::{Env, Format, Toml},
+    providers::{Format, Toml},
 };
 use futures::stream::StreamExt;
 use log::{info, warn};
@@ -28,10 +28,9 @@ mod built_info {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Config {
-    discord_token: String,
+    token_file: String,
     log_channel_webhook: String,
-    //manager_roles: Vec<u64>,
-    //notify_roles: Vec<u64>,
+    mod_role: Option<u64>,
     main_server: u64,
     qurantine_add_role: Option<u64>,
     qurantine_prevent_role: Option<u64>,
@@ -238,6 +237,22 @@ struct Data {
 }
 
 type Ctx<'a> = poise::Context<'a, Arc<Data>, AppError>;
+
+async fn check_permissions(ctx: Ctx<'_>) -> Result<bool, AppError> {
+    let data = ctx.data();
+    if let Some(member) = ctx.author_member().await {
+        if let Some(permissions) = &member.permissions {
+            if permissions.administrator() {
+                return Ok(true);
+            }
+        }
+        if let Some(modroleid) = data.config.mod_role {
+            let mod_role = RoleId::new(modroleid);
+            return Ok(member.roles.contains(&mod_role));
+        }
+    }
+    Ok(false)
+}
 
 async fn event_handler(
     framework: FrameworkContext<'_, Arc<Data>, AppError>,
@@ -464,7 +479,7 @@ async fn qurantine_user(
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn status(context: Ctx<'_>) -> Result<(), AppError> {
     let (tags_count, users_count, bans_count, actions_count) =
         context.data().db.count_records().await?;
@@ -490,6 +505,7 @@ Created on @spunksuii's request for anti-goon squads.
 
 -- Julia's alibi. Winston's detested.
 -- Licensed under GNU AGPL v3.0, (C) l1npengtul Twenty Twenty-Six.
+-- Source Code: https://github.com/l1npengtul/yasl
 ```
             "#
         ))
@@ -497,7 +513,7 @@ Created on @spunksuii's request for anti-goon squads.
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn exempt_user(context: Ctx<'_>, user: User) -> Result<(), AppError> {
     context.data().db.insert_exempt_user(user.id).await?;
     if context.data().db.is_user_banned(user.id).await? {
@@ -512,7 +528,7 @@ async fn exempt_user(context: Ctx<'_>, user: User) -> Result<(), AppError> {
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn unexempt_user(context: Ctx<'_>, user: User) -> Result<(), AppError> {
     if !context.data().db.is_user_exempted(user.id).await? {
         context.reply("User is not exempt.").await?;
@@ -528,7 +544,7 @@ async fn unexempt_user(context: Ctx<'_>, user: User) -> Result<(), AppError> {
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn exempted_users(context: Ctx<'_>) -> Result<(), AppError> {
     let mut table = Table::new("{:>} {<:}").with_heading("```");
     table.add_heading("Exempted Users:");
@@ -541,7 +557,7 @@ async fn exempted_users(context: Ctx<'_>) -> Result<(), AppError> {
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn add_banned_tag_by_user(context: Ctx<'_>, user: User) -> Result<(), AppError> {
     let (primary_id, primary_tag) = match user.primary_guild {
         Some(primary) => {
@@ -578,7 +594,7 @@ async fn add_banned_tag_by_user(context: Ctx<'_>, user: User) -> Result<(), AppE
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn add_banned_tag_by_guild_id(context: Ctx<'_>, guild_id: u64) -> Result<(), AppError> {
     context
         .data()
@@ -589,7 +605,7 @@ async fn add_banned_tag_by_guild_id(context: Ctx<'_>, guild_id: u64) -> Result<(
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn add_banned_tag_by_tag(context: Ctx<'_>, tag: String) -> Result<(), AppError> {
     let length = tag.chars().count();
     if length > 4 || length < 1 {
@@ -602,7 +618,7 @@ async fn add_banned_tag_by_tag(context: Ctx<'_>, tag: String) -> Result<(), AppE
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn banned_tags(context: Ctx<'_>) -> Result<(), AppError> {
     let mut table = Table::new("{:>} {:<} {:<}").with_heading("Tag bans");
     table.add_heading("```");
@@ -619,7 +635,7 @@ async fn banned_tags(context: Ctx<'_>) -> Result<(), AppError> {
     Ok(())
 }
 
-#[poise::command(slash_command, guild_only, required_permissions = "ADMINISTRATOR")]
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn unban_tag(context: Ctx<'_>, id: i64) -> Result<(), AppError> {
     context.data().db.delete_banned_tag(id).await?;
     context.reply("Unbanned tag.").await?;
@@ -664,7 +680,6 @@ async fn main() {
     let config = if yasl_test == "1" {
         Figment::new()
             .merge(Toml::file("yasl.toml"))
-            .merge(Env::prefixed("YASL_"))
             .extract::<Config>()
             .expect("Failed to load config file")
     } else {
@@ -672,7 +687,6 @@ async fn main() {
 
         Figment::new()
             .merge(Toml::file(format!("{configuration_directory}/yasl.toml")))
-            .merge(Env::prefixed("YASL_"))
             .extract::<Config>()
             .expect("Failed to load config file")
     };
@@ -690,6 +704,12 @@ async fn main() {
     };
 
     db.migrate().await.expect("failed to run db migrations!");
+
+    let discord_token = {
+        tokio::fs::read_to_string(&config.token_file)
+            .await
+            .expect("failed to read discord token file")
+    };
 
     let data = Arc::new(Data { config, db });
     let data2 = data.clone();
@@ -730,7 +750,7 @@ async fn main() {
         .build();
 
     let mut client = ClientBuilder::new(
-        &data2.config.discord_token,
+        &discord_token,
         GatewayIntents::non_privileged()
             | GatewayIntents::GUILD_MEMBERS
             | GatewayIntents::GUILD_MESSAGES
