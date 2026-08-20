@@ -103,7 +103,7 @@
           };
 
           config = lib.mkIf cfg.enable {
-            environment.systemPackages = [ self.packages.default ];
+            environment.systemPackages = [ self.packages.${pkgs.stdenv.hostPlatform.system}.default ];
 
             users.users.yasl = {
               description = "yasl bot service user";
