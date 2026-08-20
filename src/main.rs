@@ -209,6 +209,14 @@ impl Database {
         Ok(exists)
     }
 
+    pub async fn get_all_banned_users(&self) -> Result<Vec<(i64, UserId)>, AppError> {
+        let banned = query!("SELECT rowid, * FROM banned_users")
+            .map(|rec| (rec.rowid, UserId::new(rec.user_id as u64)))
+            .fetch_all(&self.db)
+            .await?;
+        Ok(banned)
+    }
+
     pub async fn ban_user(&self, user: UserId) -> Result<(), AppError> {
         let user_id = user.get() as i64;
         let _ = query!("INSERT INTO banned_users VALUES ($1)", user_id)
@@ -637,6 +645,19 @@ async fn banned_tags(context: Ctx<'_>) -> Result<(), AppError> {
 }
 
 #[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
+async fn banned_users(context: Ctx<'_>) -> Result<(), AppError> {
+    let mut table = Table::new("{:>} {:<} {:<}").with_heading("User bans");
+    table.add_heading("```");
+    table.add_row(row!("ID", "UserID"));
+    for (rowid, user_id) in context.data().db.get_all_banned_users().await? {
+        table.add_row(row!(rowid, user_id.get()));
+    }
+    table.add_heading("```");
+    context.reply(table.to_string()).await?;
+    Ok(())
+}
+
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn unban_tag(context: Ctx<'_>, id: i64) -> Result<(), AppError> {
     context.data().db.delete_banned_tag(id).await?;
     context.reply("Unbanned tag.").await?;
@@ -730,6 +751,7 @@ async fn main() {
     let webhook = tokio::fs::read_to_string(&config.log_channel_webhook_file)
         .await
         .expect("failed to read discord token file");
+    info!("discord webhook url: {}", &webhook);
 
     let data = Arc::new(Data {
         config,
@@ -749,6 +771,7 @@ async fn main() {
                 exempt_user(),
                 unexempt_user(),
                 exempted_users(),
+                banned_users(),
                 add_banned_tag_by_user(),
                 add_banned_tag_by_guild_id(),
                 add_banned_tag_by_tag(),
