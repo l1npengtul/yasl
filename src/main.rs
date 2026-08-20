@@ -17,8 +17,8 @@ use poise::{
 use serde::{Deserialize, Serialize};
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
-use sqlx::SqlitePool;
 use sqlx::query;
+use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
 use std::sync::Arc;
 use tabular::{Table, row};
 
@@ -708,8 +708,14 @@ async fn main() {
         format!("{state_directory}/yasl.sql")
     };
 
+    let sqlite_connect_options = SqliteConnectOptions::new()
+        .filename(db_path)
+        .create_if_missing(true);
+
     let db = Database {
-        db: SqlitePool::connect(&db_path).await.unwrap(),
+        db: SqlitePool::connect_with(sqlite_connect_options)
+            .await
+            .unwrap(),
     };
 
     warn!("running db migrations");
