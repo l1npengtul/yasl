@@ -645,6 +645,13 @@ async fn banned_tags(context: Ctx<'_>) -> Result<(), AppError> {
 }
 
 #[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
+async fn add_banned_user_manually(ctx: Ctx<'_>, user: UserId) -> Result<(), AppError> {
+    ctx.data().db.ban_user(user).await?;
+    ctx.reply("Banned user.").await?;
+    Ok(())
+}
+
+#[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn banned_users(context: Ctx<'_>) -> Result<(), AppError> {
     let mut table = Table::new("{:>} {:<} {:<}").with_heading("User bans");
     table.add_heading("```");
