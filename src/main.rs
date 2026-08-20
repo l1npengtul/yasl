@@ -675,10 +675,12 @@ async fn handle_signals(mut signals: Signals, shard: Arc<ShardManager>, data: Ar
 #[tokio::main]
 async fn main() {
     env_logger::init();
+    info!("starting yasl...");
 
     let yasl_test = std::env::var("YASLTEST").unwrap_or("0".to_string());
 
     let config = if yasl_test == "1" {
+        info!("starting in test mode.");
         Figment::new()
             .merge(Toml::file("yasl.toml"))
             .extract::<Config>()
@@ -686,6 +688,10 @@ async fn main() {
     } else {
         let configuration_directory =
             std::env::var("CONFIGURATION_DIRECTORY").unwrap_or("/etc".to_string());
+        info!(
+            "loading yasl config from directory: {}",
+            &configuration_directory
+        );
 
         Figment::new()
             .merge(Toml::file(format!("{configuration_directory}/yasl.toml")))
@@ -698,7 +704,7 @@ async fn main() {
     } else {
         let state_directory =
             std::env::var("STATE_DIRECTORY").unwrap_or("/var/lib/yasl".to_string());
-
+        info!("loading yasl database from directory: {}", &state_directory);
         format!("{state_directory}/yasl.sql")
     };
 
@@ -706,12 +712,15 @@ async fn main() {
         db: SqlitePool::connect(&db_path).await.unwrap(),
     };
 
+    warn!("running db migrations");
     db.migrate().await.expect("failed to run db migrations!");
 
+    warn!("reading discord token...");
     let discord_token = tokio::fs::read_to_string(&config.token_file)
         .await
         .expect("failed to read discord token file");
 
+    warn!("reading discord webhook...");
     let webhook = tokio::fs::read_to_string(&config.log_channel_webhook_file)
         .await
         .expect("failed to read discord token file");
@@ -723,6 +732,7 @@ async fn main() {
     });
     let data2 = data.clone();
 
+    info!("hooking signals...");
     let signals = Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("failed to hook signals");
     let handle = signals.handle();
 
@@ -772,6 +782,7 @@ async fn main() {
 
     let shard_man = client.shard_manager.clone();
     tokio::spawn(handle_signals(signals, shard_man, data2));
+    warn!("starting bot!");
     client.start().await.unwrap();
     handle.close();
 }
