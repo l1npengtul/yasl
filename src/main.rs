@@ -29,7 +29,7 @@ mod built_info {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Config {
     token_file: String,
-    log_channel_webhook: String,
+    log_channel_webhook_file: String,
     mod_role: Option<u64>,
     main_server: u64,
     qurantine_add_role: Option<u64>,
@@ -234,6 +234,7 @@ impl Database {
 struct Data {
     config: Config,
     db: Database,
+    webhook: String,
 }
 
 type Ctx<'a> = poise::Context<'a, Arc<Data>, AppError>;
@@ -386,7 +387,7 @@ async fn event_handler(
 
 async fn log_wh(data: Arc<Data>, text: String) -> Result<(), AppError> {
     info!("{}", &text);
-    let mut builder = DiscordMessage::builder(&data.config.log_channel_webhook);
+    let mut builder = DiscordMessage::builder(&data.webhook);
     builder.add_message(text);
     let _ = builder.build().send().await;
     Ok(())
@@ -705,13 +706,19 @@ async fn main() {
 
     db.migrate().await.expect("failed to run db migrations!");
 
-    let discord_token = {
-        tokio::fs::read_to_string(&config.token_file)
-            .await
-            .expect("failed to read discord token file")
-    };
+    let discord_token = tokio::fs::read_to_string(&config.token_file)
+        .await
+        .expect("failed to read discord token file");
 
-    let data = Arc::new(Data { config, db });
+    let webhook = tokio::fs::read_to_string(&config.log_channel_webhook_file)
+        .await
+        .expect("failed to read discord token file");
+
+    let data = Arc::new(Data {
+        config,
+        db,
+        webhook,
+    });
     let data2 = data.clone();
 
     let signals = Signals::new(&[SIGTERM, SIGINT, SIGQUIT]).expect("failed to hook signals");
