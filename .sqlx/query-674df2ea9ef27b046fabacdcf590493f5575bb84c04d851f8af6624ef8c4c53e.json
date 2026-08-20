@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT * FROM banned_tags WHERE server_id = $1 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "server_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "tag",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "674df2ea9ef27b046fabacdcf590493f5575bb84c04d851f8af6624ef8c4c53e"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM banned_tags WHERE rowid = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "3d853e35c81dbfaf8fcb234e1741744faec23f027d7b59d5656882c80788a2fb"
+}

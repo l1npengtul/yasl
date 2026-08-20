@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT rowid, * FROM banned_tags",
+  "describe": {
+    "columns": [
+      {
+        "name": "rowid",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "server_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "tag",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "a335be7fdae56f1f6f4d1c8e1a38cd45f3991c9afd1561a1ec8a4240b2925320"
+}
