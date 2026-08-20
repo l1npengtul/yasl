@@ -555,7 +555,7 @@ async fn unexempt_user(context: Ctx<'_>, user: User) -> Result<(), AppError> {
 
 #[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn exempted_users(context: Ctx<'_>) -> Result<(), AppError> {
-    let mut table = Table::new("{:>} {<:}").with_heading("```");
+    let mut table = Table::new("{:>} {:<}").with_heading("```");
     table.add_heading("Exempted Users:");
     table.add_row(row!("User ID", "Time (UTC)"));
     for (exempted_userid, time) in context.data().db.get_all_exempt_users().await? {
@@ -653,7 +653,7 @@ async fn add_banned_user_manually(ctx: Ctx<'_>, user: UserId) -> Result<(), AppE
 
 #[poise::command(slash_command, prefix_command, guild_only, check = "check_permissions")]
 async fn banned_users(context: Ctx<'_>) -> Result<(), AppError> {
-    let mut table = Table::new("{:>} {:<} {:<}").with_heading("User bans");
+    let mut table = Table::new("{:>} {:<}").with_heading("User bans");
     table.add_heading("```");
     table.add_row(row!("ID", "UserID"));
     for (rowid, user_id) in context.data().db.get_all_banned_users().await? {
