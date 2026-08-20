@@ -43,6 +43,11 @@ struct Database {
 }
 
 impl Database {
+    pub async fn migrate(&self) -> Result<(), AppError> {
+        sqlx::migrate!().run(&self.db).await?;
+        return Ok(());
+    }
+
     pub async fn count_records(&self) -> Result<(i64, i64, i64, i64), AppError> {
         let banned_tags = query!("SELECT COUNT(*) as count FROM banned_tags")
             .map(|rec| rec.count)
@@ -683,6 +688,8 @@ async fn main() {
     let db = Database {
         db: SqlitePool::connect(&db_path).await.unwrap(),
     };
+
+    db.migrate().await.expect("failed to run db migrations!");
 
     let data = Arc::new(Data { config, db });
     let data2 = data.clone();

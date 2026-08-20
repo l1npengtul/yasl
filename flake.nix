@@ -32,9 +32,12 @@
             ];
           }
         );
+        yaslpkg = pkgs.callPackage ./package.nix { };
       in
       {
         formatter = pkgs.alejandra;
+
+        packages.default = yaslpkg;
 
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [

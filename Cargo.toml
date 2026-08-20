@@ -34,10 +34,6 @@ features = ["toml"]
 git = "https://github.com/serenity-rs/poise"
 branch = "next"
 
-[dependencies.serenity]
-git = "https://github.com/serenity-rs/serenity"
-branch = "next"
-
 [dependencies.tokio]
 version = "1.53.1"
 features = ["full"]
